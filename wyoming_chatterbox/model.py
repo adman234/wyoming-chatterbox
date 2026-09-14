@@ -75,6 +75,8 @@ def load_model(name: str, device: str, dtype: str = "float32", s3gen_dtype: str 
     s3gen_cls.device = property(lambda self: next(self.mel2wav.parameters()).device)
     s3gen_cls.dtype = property(lambda self: next(self.mel2wav.parameters()).dtype)
 
+    apply_sdpa_flags_to_perceiver(model.t3)
+
     if getattr(model.t3, "is_gpt", False):
         drop_causal_mask_buffers(model.t3.tfmr)
 
@@ -117,6 +119,26 @@ def prepare_voice(model, voice_ref: str) -> None:
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+def apply_sdpa_flags_to_perceiver(t3: torch.nn.Module) -> None:
+    """Make the standard model's perceiver respect configure_sdpa.
+
+    Chatterbox's perceiver wraps its attention in torch.backends.cuda.sdp_kernel
+    with flash, math and memory efficient enabled (cuDNN defaults to enabled),
+    which switches flash and cuDNN attention back on inside that block whatever
+    the process-wide flags say. Call after configure_sdpa. Turbo and Nano have
+    no perceiver.
+    """
+    flags = {
+        "enable_flash": torch.backends.cuda.flash_sdp_enabled(),
+        "enable_math": torch.backends.cuda.math_sdp_enabled(),
+        "enable_mem_efficient": torch.backends.cuda.mem_efficient_sdp_enabled(),
+        "enable_cudnn": torch.backends.cuda.cudnn_sdp_enabled(),
+    }
+    for module in t3.modules():
+        if getattr(module, "flash_config", None) is not None:
+            module.flash_config = dict(flags)
 
 
 def drop_causal_mask_buffers(tfmr: torch.nn.Module) -> None:
