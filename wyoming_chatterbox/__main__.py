@@ -54,9 +54,10 @@ def main():
     )
     parser.add_argument(
         "--sdpa",
-        default="auto",
+        # flash/cuDNN attention garbles nano in bfloat16 on an rtx 5060 ti (blackwell)
+        default="efficient",
         choices=SDPA_BACKENDS,
-        help="Attention kernels PyTorch may use; efficient disables flash and cuDNN (default: auto)",
+        help="Attention kernels PyTorch may use; efficient disables flash and cuDNN (default: efficient)",
     )
     parser.add_argument(
         "--debug",

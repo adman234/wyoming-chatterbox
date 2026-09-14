@@ -80,7 +80,7 @@ wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 | `--device` | cuda | torch device (`cuda` or `cpu`) |
 | `--model` | standard | `standard` (500M), `turbo` (350M, faster, supports `[laugh]` style tags) or `nano` (110M, fastest) |
 | `--dtype` | float32 | precision for the T3 model: `float32`, `bfloat16` or `float16` |
-| `--sdpa` | auto | attention kernels pytorch may use: `auto`, `efficient` (no flash/cudnn) or `math` |
+| `--sdpa` | efficient | attention kernels pytorch may use: `efficient` (no flash/cudnn), `math` or `auto` (all) |
 | `--debug` | false | enable debug logging |
 
 ---
@@ -137,6 +137,7 @@ peak vram allocated by pytorch while speaking home assistant style sentences (rt
 - `turbo` and `nano` are english only and ignore exaggeration/cfg, but support tags like `[laugh]` and `[cough]`.
 - gpt-2 based models (turbo, nano) carry 0.75-1.5gb of unused attention mask buffers under transformers 4.x; these are freed at load.
 - unused cached memory is released after every request. memory does not grow across repeated requests.
+- flash/cudnn attention made `nano` with `bfloat16` speak gibberish on an rtx 5060 ti, so they are off by default (`--sdpa efficient`). `--sdpa auto` turns them back on.
 
 if you get oom errors:
 
