@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 
 import torch
 
@@ -12,6 +13,27 @@ from wyoming.server import AsyncEventHandler
 from wyoming.tts import Synthesize
 
 _LOGGER = logging.getLogger(__name__)
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+MIN_SENTENCE_CHARS = 20
+SAMPLE_WIDTH = 2  # 16-bit
+CHANNELS = 1
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences, merging short fragments into the next one."""
+    sentences, pending = [], ""
+    for piece in _SENTENCE_END.split(text.strip()):
+        pending = f"{pending} {piece}".strip()
+        if len(pending) >= MIN_SENTENCE_CHARS:
+            sentences.append(pending)
+            pending = ""
+    if pending:
+        if sentences:
+            sentences[-1] = f"{sentences[-1]} {pending}"
+        else:
+            sentences.append(pending)
+    return sentences
 
 
 class ChatterboxEventHandler(AsyncEventHandler):
@@ -67,52 +89,49 @@ class ChatterboxEventHandler(AsyncEventHandler):
             text = synthesize.text
             _LOGGER.info("Synthesizing: %s", text)
 
-            # Generate audio in executor to avoid blocking. The model shares
-            # voice state between calls, so only one generation runs at a time.
-            loop = asyncio.get_running_loop()
-            async with self.generate_lock:
-                wav_tensor = await loop.run_in_executor(None, self.model.generate, text)
-                if torch.cuda.is_available():
-                    # hand activation and kv cache memory back between requests
-                    torch.cuda.empty_cache()
-
-            # Convert to int16 PCM
-            wav_tensor = wav_tensor.cpu().squeeze()
-            if wav_tensor.dim() == 0:
-                wav_tensor = wav_tensor.unsqueeze(0)
-
-            # Apply volume boost and clamp
-            wav_tensor = wav_tensor * self.volume_boost
-            wav_tensor = torch.clamp(wav_tensor, -1.0, 1.0)
-            wav_int16 = (wav_tensor * 32767).to(torch.int16)
-            audio_data = wav_int16.numpy().tobytes()
-
-            sample_rate = self.sample_rate
-            sample_width = 2  # 16-bit
-            channels = 1
-
-            # Send audio start
             await self.write_event(
                 AudioStart(
-                    rate=sample_rate, width=sample_width, channels=channels
+                    rate=self.sample_rate, width=SAMPLE_WIDTH, channels=CHANNELS
                 ).event()
             )
 
-            # Send audio in chunks (100ms each)
-            chunk_size = sample_rate * sample_width * channels // 10
-            for i in range(0, len(audio_data), chunk_size):
-                chunk = audio_data[i : i + chunk_size]
-                await self.write_event(
-                    AudioChunk(
-                        audio=chunk,
-                        rate=sample_rate,
-                        width=sample_width,
-                        channels=channels,
-                    ).event()
-                )
+            # Generate one sentence at a time in an executor: peak VRAM stays at
+            # the size of the longest sentence and the first audio arrives sooner.
+            # The model shares voice state between calls, so only one request
+            # generates at a time.
+            loop = asyncio.get_running_loop()
+            async with self.generate_lock:
+                for sentence in split_sentences(text):
+                    wav_tensor = await loop.run_in_executor(None, self.model.generate, sentence)
+                    await self._write_audio(wav_tensor)
+                if torch.cuda.is_available():
+                    # hand activation and kv cache memory back between requests
+                    torch.cuda.empty_cache()
 
             await self.write_event(AudioStop().event())
             _LOGGER.info("Synthesis complete")
             return True
 
         return True
+
+    async def _write_audio(self, wav_tensor: torch.Tensor) -> None:
+        """Send generated audio as int16 PCM chunks."""
+        wav_tensor = wav_tensor.cpu().squeeze()
+        if wav_tensor.dim() == 0:
+            wav_tensor = wav_tensor.unsqueeze(0)
+
+        # Apply volume boost and clamp
+        wav_tensor = torch.clamp(wav_tensor * self.volume_boost, -1.0, 1.0)
+        audio_data = (wav_tensor * 32767).to(torch.int16).numpy().tobytes()
+
+        # Send audio in chunks (100ms each)
+        chunk_size = self.sample_rate * SAMPLE_WIDTH * CHANNELS // 10
+        for i in range(0, len(audio_data), chunk_size):
+            await self.write_event(
+                AudioChunk(
+                    audio=audio_data[i : i + chunk_size],
+                    rate=self.sample_rate,
+                    width=SAMPLE_WIDTH,
+                    channels=CHANNELS,
+                ).event()
+            )

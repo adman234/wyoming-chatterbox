@@ -15,7 +15,7 @@ Requires an NVIDIA GPU with 4GB+ VRAM and the Nvidia-Driver plugin. First start 
 &#xD;
 Put your reference WAV in the voice path as reference.wav (or change --voice-ref in Post Arguments).&#xD;
 &#xD;
-To use less VRAM, add to Post Arguments: --dtype bfloat16 (T3 in half precision), and/or --model turbo or --model nano (smaller, faster models).</Overview>
+To use less VRAM, add to Post Arguments: --dtype bfloat16 and --s3gen-dtype bfloat16 (half precision), and/or --model turbo or --model nano (smaller, faster models). The first start of a new model downloads 3-4GB with no progress shown in the log.</Overview>
   <Category>HomeAutomation: Tools:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/adman234/wyoming-chatterbox/master/unraid/wyoming-chatterbox.xml</TemplateURL>

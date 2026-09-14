@@ -11,7 +11,7 @@ from wyoming.server import AsyncServer
 
 from . import __version__
 from .handler import ChatterboxEventHandler
-from .model import DTYPES, MODELS, SDPA_BACKENDS, configure_sdpa, load_model
+from .model import DTYPES, MODELS, SDPA_BACKENDS, configure_sdpa, load_model, prepare_voice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +60,12 @@ def main():
         help="Attention kernels PyTorch may use; efficient disables flash and cuDNN (default: efficient)",
     )
     parser.add_argument(
+        "--s3gen-dtype",
+        default="float32",
+        choices=list(DTYPES),
+        help="Precision for the S3Gen flow (speech tokens to mel); the vocoder stays float32 (default: float32)",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -89,14 +95,18 @@ def main():
 async def run_server(args, voice_ref: str):
     """Run the Wyoming server."""
     _LOGGER.info(
-        "Loading Chatterbox %s model on %s (T3 %s)...", args.model, args.device, args.dtype
+        "Loading Chatterbox %s model on %s (T3 %s, S3Gen flow %s)...",
+        args.model,
+        args.device,
+        args.dtype,
+        args.s3gen_dtype,
     )
     configure_sdpa(args.sdpa)
-    model = load_model(args.model, args.device, args.dtype)
+    model = load_model(args.model, args.device, args.dtype, args.s3gen_dtype)
 
     # Embed the reference voice once instead of on every request
     _LOGGER.info("Preparing voice: %s", voice_ref)
-    model.prepare_conditionals(voice_ref)
+    prepare_voice(model, voice_ref)
     _ = model.generate("Ready.")
 
     _LOGGER.info("Starting server at %s (volume boost: %.1fx)", args.uri, args.volume_boost)

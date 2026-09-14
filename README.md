@@ -6,7 +6,7 @@ clone any voice with a 10-30 second audio sample. integrates directly with home 
 
 ## requirements
 
-- nvidia gpu with 4gb+ vram (2-4gb used at runtime depending on `--model` and `--dtype`, see [gpu memory](#gpu-memory))
+- nvidia gpu with 2gb+ vram (about 1-3gb used at runtime depending on `--model` and `--dtype`, see [gpu memory](#gpu-memory))
 - cuda 12.8 capable host driver (≥570), needed for rtx 50xx (blackwell) support
 - [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on host
 - docker + docker compose v2
@@ -81,6 +81,7 @@ wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 | `--model` | standard | `standard` (500M), `turbo` (350M, faster, supports `[laugh]` style tags) or `nano` (110M, fastest) |
 | `--dtype` | float32 | precision for the T3 model: `float32`, `bfloat16` or `float16` |
 | `--sdpa` | efficient | attention kernels pytorch may use: `efficient` (no flash/cudnn), `math` or `auto` (all) |
+| `--s3gen-dtype` | float32 | precision for the s3gen flow (speech tokens to mel): `float32`, `bfloat16` or `float16`. the vocoder always stays float32 |
 | `--debug` | false | enable debug logging |
 
 ---
@@ -125,18 +126,22 @@ sudo systemctl enable --now wyoming-chatterbox
 
 ## gpu memory
 
-peak vram allocated by pytorch while speaking home assistant style sentences (rtx 4070 super, torch 2.7.1 cu128). `nvidia-smi` will read a few hundred mb higher for the cuda context.
+vram allocated by pytorch with the voice loaded (idle) and while speaking home assistant style sentences (peak), measured on an rtx 4070 super with torch 2.7.1 cu128. `nvidia-smi` will read a few hundred mb higher for the cuda context.
 
-| `--model` | `--dtype float32` | `--dtype bfloat16` | speed (seconds per second of audio) |
-|-----------|-------------------|--------------------|-------------------------------------|
-| standard | 3.7gb | 2.6gb | ~0.7 |
-| turbo | 3.2gb | 2.4gb | ~0.2-0.35 |
-| nano | 2.3gb | 2.0gb | ~0.12-0.2 |
+| `--model` | `--dtype bfloat16` idle / peak | `--dtype bfloat16 --s3gen-dtype bfloat16` idle / peak | speed (seconds per second of audio) |
+|-----------|--------------------------------|--------------------------------------------------------|-------------------------------------|
+| standard | 1.5gb / 1.8gb | 1.3gb / 1.6gb | ~0.4 |
+| turbo | 1.3gb / 1.6gb | 1.1gb / 1.3gb | ~0.18 |
+| nano | 0.9gb / 1.2gb | 0.65gb / 0.9gb | ~0.11 |
 
-- `bfloat16` only changes t3 (the text to speech token model). in testing it made no difference to whisper transcription accuracy or speaker similarity. it needs an rtx 30xx or newer.
+`--dtype float32` (the default) adds about 1.0gb for standard, 0.8gb for turbo and 0.35gb for nano.
+
+- `--dtype` and `--s3gen-dtype` made no difference to whisper transcription accuracy or speaker similarity in testing. `bfloat16` needs an rtx 30xx or newer.
 - `turbo` and `nano` are english only and ignore exaggeration/cfg, but support tags like `[laugh]` and `[cough]`.
+- the speech tokenizer, speaker encoder and voice encoder are only needed to embed the reference voice, so they move to the cpu once it is loaded (about 500mb). changing the voice needs a restart.
+- chatterbox keeps the speaker embedding's autograd graph alive (about 270mb of activations); it is detached after loading the voice.
 - gpt-2 based models (turbo, nano) carry 0.75-1.5gb of unused attention mask buffers under transformers 4.x; these are freed at load.
-- unused cached memory is released after every request. memory does not grow across repeated requests.
+- text is generated one sentence at a time, so long announcements do not raise peak memory. unused cached memory is released after every request, and memory does not grow across repeated requests.
 - flash/cudnn attention made `nano` with `bfloat16` speak gibberish on an rtx 5060 ti, so they are off by default (`--sdpa efficient`). `--sdpa auto` turns them back on.
 
 if you get oom errors:
