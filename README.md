@@ -141,6 +141,7 @@ vram allocated by pytorch with the voice loaded (idle) and while speaking home a
 - the speech tokenizer, speaker encoder and voice encoder are only needed to embed the reference voice, so they move to the cpu once it is loaded (about 500mb). changing the voice needs a restart.
 - chatterbox keeps the speaker embedding's autograd graph alive (about 270mb of activations); it is detached after loading the voice.
 - gpt-2 based models (turbo, nano) carry 0.75-1.5gb of unused attention mask buffers under transformers 4.x; these are freed at load.
+- models are loaded and trimmed in system ram before moving to the gpu, so freed buffers and float32 copies never leave unreturnable holes in gpu memory. startup briefly uses 3-5gb of system ram.
 - text is generated one sentence at a time, so long announcements do not raise peak memory. unused cached memory is released after every request, and memory does not grow across repeated requests.
 - flash/cudnn attention made `nano` with `bfloat16` speak gibberish on an rtx 5060 ti, so they are off by default (`--sdpa efficient`). `--sdpa auto` turns them back on.
 

@@ -57,15 +57,16 @@ def load_model(name: str, device: str, dtype: str = "float32", s3gen_dtype: str 
         name,
         DOWNLOAD_GB[name],
     )
+    # load on the CPU and trim there; see move_to_device
     if name == "standard":
         from chatterbox.tts import ChatterboxTTS
 
-        model = ChatterboxTTS.from_pretrained(device=device)
+        model = ChatterboxTTS.from_pretrained(device="cpu")
     else:
         from chatterbox.tts_turbo import ChatterboxTurboTTS
 
         kwargs = {"nano": True} if name == "nano" else {}
-        model = ChatterboxTurboTTS.from_pretrained(device=device, **kwargs)
+        model = ChatterboxTurboTTS.from_pretrained(device="cpu", **kwargs)
 
     # S3Gen derives its device and dtype from the speech tokenizer's parameters.
     # The tokenizer moves to the CPU after voice preparation and the flow may run
@@ -90,10 +91,32 @@ def load_model(name: str, device: str, dtype: str = "float32", s3gen_dtype: str 
         cast_s3gen_flow(model.s3gen, flow_dtype)
         _LOGGER.info("S3Gen flow running in %s", s3gen_dtype)
 
+    move_to_device(model, device)
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     return model
+
+
+def move_to_device(model, device: str) -> None:
+    """Move a CPU-loaded, already trimmed model to device.
+
+    Trimming on the GPU (freeing the GPT-2 mask buffers, replacing float32
+    weights with half precision copies) leaves holes between live weights that
+    the CUDA caching allocator cannot hand back, which showed up as ~1 GiB of
+    extra reserved memory for Turbo and Nano. Trimmed on the CPU, only final
+    weights reach the GPU. The voice-prep modules go last, so moving them back
+    to the CPU after prepare_voice frees the end of the allocation.
+    """
+    model.t3.to(device)
+    model.s3gen.flow.to(device)
+    model.s3gen.mel2wav.to(device)
+    model.s3gen.to(device)  # speech tokenizer, speaker encoder, remaining buffers
+    model.ve.to(device)
+    if model.conds is not None:
+        model.conds = model.conds.to(device)
+    model.device = device
 
 
 def prepare_voice(model, voice_ref: str) -> None:
@@ -192,10 +215,11 @@ def cast_s3gen_flow(s3gen: torch.nn.Module, dtype: torch.dtype) -> None:
     """
     flow = s3gen.flow
     flow.to(dtype=dtype)
-    device_type = next(flow.parameters()).device.type
     inference = flow.inference
 
     def autocast_inference(*args, **kwargs):
+        # the model is cast on the CPU and moved afterwards, so check at call time
+        device_type = next(flow.parameters()).device.type
         with torch.autocast(device_type=device_type, dtype=dtype):
             out = inference(*args, **kwargs)
         return tuple(o.float() if torch.is_tensor(o) and o.is_floating_point() else o for o in out)
