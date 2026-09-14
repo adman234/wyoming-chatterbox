@@ -11,7 +11,7 @@ from wyoming.server import AsyncServer
 
 from . import __version__
 from .handler import ChatterboxEventHandler
-from .model import DTYPES, MODELS, load_model
+from .model import DTYPES, MODELS, SDPA_BACKENDS, configure_sdpa, load_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +53,12 @@ def main():
         help="Precision for the T3 model (default: float32)",
     )
     parser.add_argument(
+        "--sdpa",
+        default="auto",
+        choices=SDPA_BACKENDS,
+        help="Attention kernels PyTorch may use; efficient disables flash and cuDNN (default: auto)",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -84,6 +90,7 @@ async def run_server(args, voice_ref: str):
     _LOGGER.info(
         "Loading Chatterbox %s model on %s (T3 %s)...", args.model, args.device, args.dtype
     )
+    configure_sdpa(args.sdpa)
     model = load_model(args.model, args.device, args.dtype)
 
     # Embed the reference voice once instead of on every request

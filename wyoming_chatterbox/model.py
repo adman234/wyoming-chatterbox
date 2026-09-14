@@ -12,6 +12,35 @@ DTYPES = {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
 }
+SDPA_BACKENDS = ("auto", "efficient", "math")
+
+
+def configure_sdpa(backend: str) -> None:
+    """Restrict which scaled dot product attention kernels PyTorch may pick.
+
+    "efficient" disables the flash and cuDNN kernels, "math" also disables the
+    memory efficient kernel. The flags are process wide, so they also apply to
+    generations running in executor threads.
+    """
+    if backend != "auto":
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_cudnn_sdp(False)
+    if backend == "math":
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        _LOGGER.info(
+            "GPU %s (sm_%d%d), torch %s, SDPA kernels: flash=%s cudnn=%s efficient=%s math=%s",
+            torch.cuda.get_device_name(),
+            major,
+            minor,
+            torch.__version__,
+            torch.backends.cuda.flash_sdp_enabled(),
+            torch.backends.cuda.cudnn_sdp_enabled(),
+            torch.backends.cuda.mem_efficient_sdp_enabled(),
+            torch.backends.cuda.math_sdp_enabled(),
+        )
 
 
 def load_model(name: str, device: str, dtype: str = "float32"):

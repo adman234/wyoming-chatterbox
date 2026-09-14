@@ -80,6 +80,7 @@ wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 | `--device` | cuda | torch device (`cuda` or `cpu`) |
 | `--model` | standard | `standard` (500M), `turbo` (350M, faster, supports `[laugh]` style tags) or `nano` (110M, fastest) |
 | `--dtype` | float32 | precision for the T3 model: `float32`, `bfloat16` or `float16` |
+| `--sdpa` | auto | attention kernels pytorch may use: `auto`, `efficient` (no flash/cudnn) or `math` |
 | `--debug` | false | enable debug logging |
 
 ---
