@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>wyoming-chatterbox</Name>
+  <Repository>ghcr.io/adman234/wyoming-chatterbox:latest</Repository>
+  <Registry>https://github.com/adman234/wyoming-chatterbox/pkgs/container/wyoming-chatterbox</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/adman234/wyoming-chatterbox/issues</Support>
+  <Project>https://github.com/adman234/wyoming-chatterbox</Project>
+  <Overview>Wyoming protocol server for Chatterbox TTS with voice cloning. Clone any voice from a 10-30 second WAV sample and use it as a TTS provider in Home Assistant (Settings, Devices and Services, Add Integration, Wyoming Protocol, host = Unraid IP, port = 10800).&#xD;
+&#xD;
+Requires an NVIDIA GPU with 4GB+ VRAM and the Nvidia-Driver plugin. First start downloads about 3.5GB of model weights into the cache path.&#xD;
+&#xD;
+Put your reference WAV in the voice path as reference.wav (or change --voice-ref in Post Arguments).</Overview>
+  <Category>HomeAutomation: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/adman234/wyoming-chatterbox/master/unraid/wyoming-chatterbox.xml</TemplateURL>
+  <Icon>https://brands.home-assistant.io/wyoming/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia</ExtraParams>
+  <PostArgs>--uri tcp://0.0.0.0:10800 --voice-ref /voice/reference.wav --volume-boost 3.0 --device cuda</PostArgs>
+  <CPUset/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>NVIDIA GPU (4GB+ VRAM) and the Nvidia-Driver plugin.</Requires>
+  <Config Name="Wyoming Port" Target="10800" Default="10800" Mode="tcp" Description="Wyoming protocol port. Point the Home Assistant Wyoming integration here." Type="Port" Display="always" Required="true" Mask="false">10800</Config>
+  <Config Name="Voice Reference" Target="/voice" Default="/mnt/user/appdata/wyoming-chatterbox/voice" Mode="ro" Description="Folder holding your voice reference WAV (10-30s of clean speech). Filename must match --voice-ref in Post Arguments." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/wyoming-chatterbox/voice</Config>
+  <Config Name="Model Cache" Target="/cache" Default="/mnt/user/appdata/wyoming-chatterbox/cache" Mode="rw" Description="HuggingFace model cache (about 3.5GB, downloaded on first start)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/wyoming-chatterbox/cache</Config>
+  <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="GPU to use: 'all' or a GPU UUID from the Nvidia-Driver plugin page." Type="Variable" Display="always" Required="true" Mask="false">all</Config>
+  <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,utility" Mode="" Description="NVIDIA driver capabilities exposed to the container." Type="Variable" Display="advanced" Required="true" Mask="false">compute,utility</Config>
+  <Config Name="PYTORCH_CUDA_ALLOC_CONF" Target="PYTORCH_CUDA_ALLOC_CONF" Default="expandable_segments:True" Mode="" Description="PyTorch CUDA allocator setting (reduces VRAM fragmentation)." Type="Variable" Display="advanced" Required="false" Mask="false">expandable_segments:True</Config>
+</Container>
