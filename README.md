@@ -6,8 +6,8 @@ clone any voice with a 10-30 second audio sample. integrates directly with home 
 
 ## requirements
 
-- nvidia gpu with 4gb+ vram (3.5gb used at runtime)
-- cuda 12.x host driver (≥550.54.14)
+- nvidia gpu with 4gb+ vram (2-4gb used at runtime depending on `--model` and `--dtype`, see [gpu memory](#gpu-memory))
+- cuda 12.8 capable host driver (≥570), needed for rtx 50xx (blackwell) support
 - [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on host
 - docker + docker compose v2
 
@@ -78,6 +78,8 @@ wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 | `--voice-ref` | required | path to voice reference wav (10-30s of speech) |
 | `--volume-boost` | 3.0 | output volume multiplier |
 | `--device` | cuda | torch device (`cuda` or `cpu`) |
+| `--model` | standard | `standard` (500M), `turbo` (350M, faster, supports `[laugh]` style tags) or `nano` (110M, fastest) |
+| `--dtype` | float32 | precision for the T3 model: `float32`, `bfloat16` or `float16` |
 | `--debug` | false | enable debug logging |
 
 ---
@@ -122,7 +124,20 @@ sudo systemctl enable --now wyoming-chatterbox
 
 ## gpu memory
 
-chatterbox uses ~3.5gb vram at runtime. if you get oom errors:
+peak vram allocated by pytorch while speaking home assistant style sentences (rtx 4070 super, torch 2.7.1 cu128). `nvidia-smi` will read a few hundred mb higher for the cuda context.
+
+| `--model` | `--dtype float32` | `--dtype bfloat16` | speed (seconds per second of audio) |
+|-----------|-------------------|--------------------|-------------------------------------|
+| standard | 3.7gb | 2.6gb | ~0.7 |
+| turbo | 3.2gb | 2.4gb | ~0.2-0.35 |
+| nano | 2.3gb | 2.0gb | ~0.12-0.2 |
+
+- `bfloat16` only changes t3 (the text to speech token model). in testing it made no difference to whisper transcription accuracy or speaker similarity. it needs an rtx 30xx or newer.
+- `turbo` and `nano` are english only and ignore exaggeration/cfg, but support tags like `[laugh]` and `[cough]`.
+- gpt-2 based models (turbo, nano) carry 0.75-1.5gb of unused attention mask buffers under transformers 4.x; these are freed at load.
+- unused cached memory is released after every request. memory does not grow across repeated requests.
+
+if you get oom errors:
 
 ```bash
 nvidia-smi

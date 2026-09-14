@@ -11,6 +11,7 @@ from wyoming.server import AsyncServer
 
 from . import __version__
 from .handler import ChatterboxEventHandler
+from .model import DTYPES, MODELS, load_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +39,18 @@ def main():
         "--device",
         default="cuda",
         help="Torch device: cuda or cpu (default: cuda)",
+    )
+    parser.add_argument(
+        "--model",
+        default="standard",
+        choices=MODELS,
+        help="Chatterbox variant (default: standard)",
+    )
+    parser.add_argument(
+        "--dtype",
+        default="float32",
+        choices=list(DTYPES),
+        help="Precision for the T3 model (default: float32)",
     )
     parser.add_argument(
         "--debug",
@@ -68,14 +81,15 @@ def main():
 
 async def run_server(args, voice_ref: str):
     """Run the Wyoming server."""
-    _LOGGER.info("Loading Chatterbox model on %s...", args.device)
+    _LOGGER.info(
+        "Loading Chatterbox %s model on %s (T3 %s)...", args.model, args.device, args.dtype
+    )
+    model = load_model(args.model, args.device, args.dtype)
 
-    from chatterbox.tts import ChatterboxTTS
-
-    model = ChatterboxTTS.from_pretrained(device=args.device)
-
-    _LOGGER.info("Warming up with voice: %s", voice_ref)
-    _ = model.generate("Ready.", audio_prompt_path=voice_ref)
+    # Embed the reference voice once instead of on every request
+    _LOGGER.info("Preparing voice: %s", voice_ref)
+    model.prepare_conditionals(voice_ref)
+    _ = model.generate("Ready.")
 
     _LOGGER.info("Starting server at %s (volume boost: %.1fx)", args.uri, args.volume_boost)
 
@@ -84,7 +98,8 @@ async def run_server(args, voice_ref: str):
         partial(
             ChatterboxEventHandler,
             model=model,
-            voice_ref=voice_ref,
+            generate_lock=asyncio.Lock(),
+            sample_rate=model.sr,
             volume_boost=args.volume_boost,
         )
     )

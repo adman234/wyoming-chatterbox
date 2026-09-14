@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from functools import partial
 
 import torch
 
@@ -23,13 +22,13 @@ class ChatterboxEventHandler(AsyncEventHandler):
         reader,
         writer,
         model,
-        voice_ref: str,
+        generate_lock: asyncio.Lock,
         sample_rate: int = 24000,
         volume_boost: float = 3.0,
     ):
         super().__init__(reader, writer)
         self.model = model
-        self.voice_ref = voice_ref
+        self.generate_lock = generate_lock
         self.sample_rate = sample_rate
         self.volume_boost = volume_boost
 
@@ -68,14 +67,14 @@ class ChatterboxEventHandler(AsyncEventHandler):
             text = synthesize.text
             _LOGGER.info("Synthesizing: %s", text)
 
-            # Generate audio in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            wav_tensor = await loop.run_in_executor(
-                None,
-                partial(
-                    self.model.generate, text, audio_prompt_path=self.voice_ref
-                ),
-            )
+            # Generate audio in executor to avoid blocking. The model shares
+            # voice state between calls, so only one generation runs at a time.
+            loop = asyncio.get_running_loop()
+            async with self.generate_lock:
+                wav_tensor = await loop.run_in_executor(None, self.model.generate, text)
+                if torch.cuda.is_available():
+                    # hand activation and kv cache memory back between requests
+                    torch.cuda.empty_cache()
 
             # Convert to int16 PCM
             wav_tensor = wav_tensor.cpu().squeeze()

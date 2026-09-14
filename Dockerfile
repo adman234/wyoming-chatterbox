@@ -24,10 +24,14 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu128
 
 # install chatterbox-tts with --no-deps to prevent it from clobbering the torch stack,
-# then manually satisfy its remaining deps
-RUN pip install --no-cache-dir --no-deps chatterbox-tts && \
+# then manually satisfy its remaining deps.
+# pinned to an upstream commit: the pypi 0.1.7 release has no chatterbox-nano support.
+# chatterbox requires numpy<2; under numpy 2 promotion rules turbo's loudness
+# normalisation turns the reference audio float64 and the s3 tokenizer rejects it
+ARG CHATTERBOX_REF=5de7a54aa4e5e2baadb0182dde554908b48b85c2
+RUN pip install --no-cache-dir --no-deps "https://github.com/resemble-ai/chatterbox/archive/${CHATTERBOX_REF}.tar.gz" && \
     pip install --no-cache-dir \
-    numpy \
+    "numpy<2" \
     omegaconf \
     librosa \
     s3tokenizer \
@@ -40,7 +44,7 @@ RUN pip install --no-cache-dir --no-deps chatterbox-tts && \
     resemble-perth \
     diffusers==0.29.0 \
     soundfile \
-    optree>=0.13.0
+    "optree>=0.13.0"
 
 COPY pyproject.toml .
 COPY wyoming_chatterbox/ ./wyoming_chatterbox/
