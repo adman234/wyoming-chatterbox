@@ -1,78 +1,74 @@
 # wyoming-chatterbox
 
-[wyoming protocol](https://github.com/rhasspy/wyoming) server for [chatterbox tts](https://github.com/resemble-ai/chatterbox) with voice cloning.
+A [Wyoming protocol](https://github.com/rhasspy/wyoming) server for
+[Chatterbox TTS](https://github.com/resemble-ai/chatterbox), so Home Assistant can speak
+in a voice cloned from a 10 to 30 second audio sample.
 
-clone any voice with a 10-30 second audio sample. integrates directly with home assistant as a tts provider.
+This is a fork of [sudoxreboot/wyoming-chatterbox](https://github.com/sudoxreboot/wyoming-chatterbox)
+by [sudoxnym](https://sudoxreboot.com), who wrote the Wyoming server. This fork packages
+it for Unraid and cuts its GPU memory use. It is not intended to be merged back upstream.
 
-## requirements
+## What is different from upstream
 
-- nvidia gpu with 2gb+ vram (about 1-3gb used at runtime depending on `--model` and `--dtype`, see [gpu memory](#gpu-memory))
-- cuda 12.8 capable host driver (≥570), needed for rtx 50xx (blackwell) support
-- [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on host
-- docker + docker compose v2
+- **Prebuilt image** at `ghcr.io/adman234/wyoming-chatterbox`, and an Unraid template.
+- **PyTorch 2.7.1 with CUDA 12.8**, so RTX 50 series (Blackwell) cards work. The host
+  needs NVIDIA driver 570 or newer.
+- **Smaller models and lower precision**: `--model turbo` or `nano`, and `--dtype` /
+  `--s3gen-dtype` for bfloat16 or float16. Together these take it from about 3 GB of
+  VRAM to under 1 GB. See [GPU memory](#gpu-memory).
+- **VRAM trimming**: models are loaded and trimmed on the CPU before moving to the GPU,
+  encoders only needed for the reference voice move back to the CPU, and unused buffers
+  are freed.
+- **`--sdpa`** to choose attention kernels. Flash and cuDNN attention are off by default
+  because they made `nano` produce gibberish on an RTX 5060 Ti.
 
-## docker (recommended)
+## Install
 
-### 1. configure
+### Unraid
+
+Fetch the template from the Unraid terminal, then go to Docker > Add Container and pick
+`wyoming-chatterbox` from the template list. It needs the Nvidia Driver plugin.
 
 ```bash
-git clone https://github.com/sudoxreboot/wyoming-chatterbox
+wget -O /boot/config/plugins/dockerMan/templates-user/my-wyoming-chatterbox.xml https://raw.githubusercontent.com/adman234/wyoming-chatterbox/master/unraid/wyoming-chatterbox.xml
+```
+
+Put your reference WAV in the Voice Reference folder. Its filename must match
+`--voice-ref` in Post Arguments (`/voice/reference.wav` by default). Extra options such
+as `--model turbo --dtype bfloat16` also go in Post Arguments.
+
+### docker compose
+
+```bash
+git clone https://github.com/adman234/wyoming-chatterbox
 cd wyoming-chatterbox
-cp .env.example .env
+cp .env.example .env    # set VOICE_REF_DIR and VOICE_REF_FILE
+docker compose up -d --build
 ```
 
-edit `.env`:
+The first start downloads 3 to 4 GB of model weights into the cache volume. The log
+shows `starting server at tcp://0.0.0.0:10800` when it is ready.
 
-```env
-WYOMING_PORT=10800          # host port — change if 10800 is taken
-VOICE_REF_DIR=/path/to/dir  # directory containing your reference wav
-VOICE_REF_FILE=reference.wav
-VOLUME_BOOST=3.0
-TORCH_DEVICE=cuda
-```
-
-### 2. build and run
+### From source
 
 ```bash
-docker compose build
-docker compose up -d
-```
-
-first run downloads ~3.5gb of chatterbox model weights into a named docker volume (`chatterbox-cache`). this only happens once.
-
-### 3. check logs
-
-```bash
-docker compose logs -f
-# you should see: "starting server at tcp://0.0.0.0:10800"
-```
-
-### voice reference tips
-
-- 10-30 seconds of clean speech
-- no background music or noise
-- consistent speaking style
-- wav format (any sample rate)
-
----
-
-## install from source (no docker)
-
-```bash
-git clone https://github.com/sudoxreboot/wyoming-chatterbox
-cd wyoming-chatterbox
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install .
-```
-
-```bash
 wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 ```
 
-### options
+## Home Assistant
 
-| option | default | description |
+1. Settings > Devices & services > Add integration > **Wyoming Protocol**.
+2. Host: your server's IP. Port: `10800`.
+3. Choose it as the TTS provider in your voice assistant pipeline.
+
+For a good clone, use 10 to 30 seconds of clean speech in a WAV file, with no music or
+background noise and a consistent speaking style.
+
+## Options
+
+| Option | Default | Description |
 |--------|---------|-------------|
 | `--uri` | required | server uri (e.g., `tcp://0.0.0.0:10800`) |
 | `--voice-ref` | required | path to voice reference wav (10-30s of speech) |
@@ -84,49 +80,9 @@ wyoming-chatterbox --uri tcp://0.0.0.0:10800 --voice-ref /path/to/voice.wav
 | `--s3gen-dtype` | float32 | precision for the s3gen flow (speech tokens to mel): `float32`, `bfloat16` or `float16`. the vocoder always stays float32 |
 | `--debug` | false | enable debug logging |
 
----
+## GPU memory
 
-## systemd service (source install)
-
-```bash
-sudo tee /etc/systemd/system/wyoming-chatterbox.service << EOF
-[Unit]
-Description=Wyoming Chatterbox TTS
-After=network-online.target
-
-[Service]
-Type=simple
-User=$(whoami)
-Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-ExecStart=$(pwd)/.venv/bin/wyoming-chatterbox \
-  --uri tcp://0.0.0.0:10800 \
-  --voice-ref /path/to/voice_reference.wav \
-  --volume-boost 3.0
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now wyoming-chatterbox
-```
-
----
-
-## home assistant
-
-1. settings → devices & services → add integration
-2. search **wyoming protocol**
-3. host: your server ip, port: `10800` (or whatever you set in `.env`)
-4. select it as your tts provider in the voice assistant pipeline
-
----
-
-## gpu memory
-
-vram allocated by pytorch with the voice loaded (idle) and while speaking home assistant style sentences (peak), measured on an rtx 4070 super with torch 2.7.1 cu128. `nvidia-smi` will read a few hundred mb higher for the cuda context.
+VRAM allocated by PyTorch with the voice loaded (idle) and while speaking home assistant style sentences (peak), measured on an rtx 4070 super with torch 2.7.1 cu128. `nvidia-smi` will read a few hundred mb higher for the cuda context.
 
 | `--model` | `--dtype bfloat16` idle / peak | `--dtype bfloat16 --s3gen-dtype bfloat16` idle / peak | speed (seconds per second of audio) |
 |-----------|--------------------------------|--------------------------------------------------------|-------------------------------------|
@@ -145,28 +101,8 @@ vram allocated by pytorch with the voice loaded (idle) and while speaking home a
 - text is generated one sentence at a time, so long announcements do not raise peak memory. unused cached memory is released after every request, and memory does not grow across repeated requests.
 - flash/cudnn attention made `nano` with `bfloat16` speak gibberish on an rtx 5060 ti, so they are off by default (`--sdpa efficient`). `--sdpa auto` turns them back on.
 
-if you get oom errors:
+If you run out of GPU memory, restart the container.
 
-```bash
-nvidia-smi
+## License
 
-# docker
-docker compose restart
-
-# source
-pkill -f wyoming-chatterbox
-```
-
----
-
-## license
-
-mit
-
----
-
-<div align="center">
-
-made by [sudoxnym](https://sudoxreboot.com) ⚡
-
-</div>
+MIT, as upstream.
