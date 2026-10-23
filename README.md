@@ -13,6 +13,10 @@ it for Unraid and cuts its GPU memory use. It is not intended to be merged back 
 - **Prebuilt image** at `ghcr.io/adman234/wyoming-chatterbox`, and an Unraid template.
 - **PyTorch 2.7.1 with CUDA 12.8**, so RTX 50 series (Blackwell) cards work. The host
   needs NVIDIA driver 570 or newer.
+- **Pascal image** (`ghcr.io/adman234/wyoming-chatterbox:pascal`): the same code built with
+  CUDA 12.6 for GTX 10 series cards, which the default image has no kernels for. It is
+  rebuilt whenever `latest` is. Pascal has no fast bfloat16 or float16, so run it with the
+  default float32 options (leave out `--dtype` and `--s3gen-dtype`). Not for RTX 50 series.
 - **Smaller models and lower precision**: `--model turbo` or `nano`, and `--dtype` /
   `--s3gen-dtype` for bfloat16 or float16. Together these take it from about 3 GB of
   VRAM to under 1 GB. See [GPU memory](#gpu-memory).

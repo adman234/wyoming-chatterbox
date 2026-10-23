@@ -1,4 +1,7 @@
+# TORCH_CUDA=cu128 covers Turing up to Blackwell (RTX 50xx). Pascal (GTX 10xx) needs --build-arg TORCH_CUDA=cu126.
 FROM python:3.11-slim
+
+ARG TORCH_CUDA=cu128
 
 WORKDIR /app
 
@@ -21,7 +24,7 @@ RUN pip install --no-cache-dir \
     torch==2.7.1 \
     torchvision==0.22.1 \
     torchaudio==2.7.1 \
-    --index-url https://download.pytorch.org/whl/cu128
+    --index-url https://download.pytorch.org/whl/${TORCH_CUDA}
 
 # install chatterbox-tts with --no-deps to prevent it from clobbering the torch stack,
 # then manually satisfy its remaining deps.
@@ -55,9 +58,9 @@ RUN pip install --no-cache-dir "wyoming>=1.5.0" && \
 
 # fail the build if any later install swapped out the cuda torch stack
 RUN python -c "import torch, torchvision, torchaudio; \
-assert torch.__version__ == '2.7.1+cu128', torch.__version__; \
-assert torchvision.__version__ == '0.22.1+cu128', torchvision.__version__; \
-assert torchaudio.__version__ == '2.7.1+cu128', torchaudio.__version__"
+assert torch.__version__ == '2.7.1+${TORCH_CUDA}', torch.__version__; \
+assert torchvision.__version__ == '0.22.1+${TORCH_CUDA}', torchvision.__version__; \
+assert torchaudio.__version__ == '2.7.1+${TORCH_CUDA}', torchaudio.__version__"
 
 VOLUME ["/cache", "/voice"]
 

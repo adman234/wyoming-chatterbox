@@ -19,6 +19,17 @@ env:
 
 jobs:
   build:
+    # default: CUDA 12.8 (RTX 20xx up to RTX 50xx); pascal: CUDA 12.6 (also GTX 10xx, not for RTX 50xx)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            cuda: cu128
+            suffix: ''
+          - variant: pascal
+            cuda: cu126
+            suffix: '-pascal'
     runs-on: ubuntu-latest
     steps:
       # the cuda torch stack is several gb; the stock runner runs out of disk without this
@@ -47,18 +58,23 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch,enable=${{ github.ref_name != github.event.repository.default_branch }}
-            type=semver,pattern={{version}}
-            type=sha
+            type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch && matrix.variant == 'default' }}
+            type=raw,value=pascal,enable=${{ github.ref_name == github.event.repository.default_branch && matrix.variant == 'pascal' }}
+            type=ref,event=branch,suffix=${{ matrix.suffix }},enable=${{ github.ref_name != github.event.repository.default_branch }}
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=sha,suffix=${{ matrix.suffix }}
 
       - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
+          build-args: |
+            TORCH_CUDA=${{ matrix.cuda }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache${{ matrix.suffix }},mode=max
