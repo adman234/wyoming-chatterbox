@@ -1,0 +1,21 @@
+# Runtime dependencies of chatterbox (installed itself with --no-deps) and the Wyoming server.
+# Exact versions, matching the image published on 2026-10-23. Renovate proposes updates as pull requests.
+# The torch stack is NOT here: it comes from the CUDA wheel index, see TORCH_VERSION in the Dockerfile.
+
+# chatterbox requires numpy<2; under numpy 2 promotion rules turbo's loudness
+# normalisation turns the reference audio float64 and the s3 tokenizer rejects it
+numpy==1.26.4
+omegaconf==2.4.0
+librosa==0.11.0
+s3tokenizer==0.3.0
+pykakasi==2.3.0
+conformer==0.3.2
+safetensors==0.8.0
+transformers==4.46.3
+pyloudnorm==0.2.0
+spacy-pkuseg==1.0.1
+resemble-perth==1.0.1
+diffusers==0.29.0
+soundfile==0.14.0
+optree==0.20.0
+wyoming==1.10.2

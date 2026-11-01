@@ -4,6 +4,10 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
+  # weekly rebuild so :latest and :pascal pick up security fixes in the python:3.11-slim base image.
+  # layers come from the registry cache, so if the base image hasn't changed nothing is re-downloaded.
+  schedule:
+    - cron: "28 5 * * 2"
   workflow_dispatch:
 
 permissions:
@@ -11,7 +15,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: docker-${{ github.ref }}
+  group: docker-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
